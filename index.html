@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Hab Permainan Edukasi Islami</title>
+    
+    <!-- PWA Setup -->
+    <link rel="manifest" href="./manifest.json">
+    <meta name="theme-color" content="#059669">
+    <link rel="apple-touch-icon" href="./178441.png">
+
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js')
+            .then(registration => {
+              console.log('ServiceWorker berjaya didaftarkan:', registration.scope);
+            })
+            .catch(error => {
+              console.log('Pendaftaran ServiceWorker gagal:', error);
+            });
+        });
+      }
+    </script>
+
+    <!-- Tailwind & Fonts -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Fredoka', sans-serif;
+            background: linear-gradient(135deg, #047857 0%, #10b981 50%, #f59e0b 100%);
+            background-attachment: fixed;
+            min-height: 100dvh;
+            padding-bottom: env(safe-area-inset-bottom);
+            padding-top: env(safe-area-inset-top);
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            overflow: hidden; 
+        }
+        .font-arabic { font-family: 'Amiri', serif; }
+        
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.8);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        }
+
+        /* --- Cari Kata Styles --- */
+        .grid-container {
+            display: grid; gap: 4px; padding: 6px; border-radius: 16px;
+            background: rgba(255, 255, 255, 0.6); box-shadow: inset 0 4px 6px rgba(0,0,0,0.1);
+            margin: 0 auto; width: 100%; max-width: 85vmin; aspect-ratio: 1 / 1; touch-action: none; 
+        }
+        .cell {
+            background-color: #ffffff; display: flex; align-items: center; justify-content: center;
+            font-size: clamp(1rem, 4vmin, 1.5rem); font-weight: 700; color: #064e3b;
+            border-radius: 8px; cursor: pointer; box-shadow: 0 3px 0 #e5e7eb;
+            transition: transform 0.05s ease, background-color 0.1s ease;
+        }
+        .cell.highlighted { background-color: #fcd34d; color: #78350f; box-shadow: 0 2px 0 #d97706; transform: scale(0.95); }
+        .cell.found { background-color: #10b981; color: white; box-shadow: 0 3px 0 #059669; animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        
+        @keyframes pulse-glow {
+            0%, 100% { background-color: #fef08a; box-shadow: 0 0 15px #facc15, 0 3px 0 #ca8a04; color: #b45309; transform: scale(1); border: 2px solid #fbbf24;}
+            50% { background-color: #fde047; box-shadow: 0 0 25px #eab308, 0 3px 0 #a16207; color: #78350f; transform: scale(1.08); border: 2px solid #f59e0b;}
+        }
+        .cell.missed-glow { animation: pulse-glow 1.5s infinite ease-in-out; z-index: 5; position: relative; }
+        
+        .word-item { transition: all 0.3s ease; }
+        .word-item.found { background-color: #a7f3d0; color: #065f46; text-decoration: line-through; opacity: 0.7; transform: scale(0.95); }
+        .word-item.missed { background-color: #fef3c7; color: #b45309; border-color: #f59e0b; animation: shake 0.5s ease-in-out; }
+
+        /* --- Custom Dropdown Styles --- */
+        #customSelectOptions { max-height: 250px; overflow-y: auto; z-index: 1000; }
+        .custom-dropdown-open { animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        .custom-option { transition: transform 0.15s ease, background-color 0.15s ease; }
+        .custom-option:active { transform: scale(0.98); }
+
+        /* --- Uji Mata Al-Quran & Tajwid Styles --- */
+        .quran-target-card { background: linear-gradient(135deg, #ffffff 0%, #fef3c7 100%); border: 4px solid #f59e0b; box-shadow: 0 8px 20px rgba(0,0,0,0.15), inset 0 0 15px rgba(245,158,11,0.1); }
+        .quran-btn { background-color: #ffffff; color: #064e3b; box-shadow: 0 5px 0 #cbd5e1; transition: transform 0.1s, box-shadow 0.1s; }
+        .quran-btn:active { transform: translateY(4px); box-shadow: 0 1px 0 #cbd5e1; }
+        .quran-btn.correct { background-color: #10b981; color: white; box-shadow: 0 5px 0 #059669; animation: popIn 0.3s; }
+        .quran-btn.wrong { background-color: #ef4444; color: white; box-shadow: 0 5px 0 #b91c1c; animation: shake 0.4s ease-in-out; }
+        .tajwid-highlight { color: #f59e0b; text-decoration: underline; text-decoration-color: #f59e0b; text-decoration-thickness: 4px; font-weight: bold; }
+
+        /* --- Global Animations & Overlays --- */
+        #overlay, #leaderboardOverlay { background: rgba(2, 44, 34, 0.85); backdrop-filter: blur(8px); }
+        .praise-popup { position: absolute; font-size: clamp(2rem, 6vw, 3rem); font-weight: 700; color: #fcd34d; text-shadow: 0px 4px 0px #b45309, 0 8px 20px rgba(0,0,0,0.4); pointer-events: none; z-index: 1000; animation: floatUpAndFade 2s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; white-space: nowrap; }
+        
+        @keyframes floatUpAndFade { 0% { opacity: 0; transform: translate(-50%, 20px) scale(0.5) rotate(-5deg); } 20% { opacity: 1; transform: translate(-50%, -10px) scale(1.1) rotate(2deg); } 80% { opacity: 1; transform: translate(-50%, -50px) scale(1) rotate(0deg); } 100% { opacity: 0; transform: translate(-50%, -70px) scale(0.9); } }
+        @keyframes popIn { 0% { transform: scale(0.8); opacity: 0; } 50% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes bounce-slow { 0%, 100% { transform: translateY(-3%); } 50% { transform: translateY(3%); } }
+        .animate-bounce-slow { animation: bounce-slow 3s infinite ease-in-out; }
+        @keyframes bounceIn { 0% { transform: scale(0.8) translateY(20px); opacity: 0; } 60% { transform: scale(1.02) translateY(-5px); opacity: 1; } 100% { transform: scale(1) translateY(0); opacity: 1; } }
+        .animate-bounceIn { animation: bounceIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+        @keyframes star-pop { 0% { transform: scale(0) rotate(-45deg); opacity: 0; } 70% { transform: scale(1.3) rotate(15deg); opacity: 1; } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
+        
+        .star-icon { opacity: 0; font-size: 3.5rem; display: inline-block; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.2)); }
+        .star-icon.animate-pop { animation: star-pop 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+        
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; } 
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; } 
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #10b981; border-radius: 10px; }
+        
+        /* Baby Character Animations */
+        @keyframes peekFloat { 0% { transform: translateY(100%); opacity: 0; } 30% { transform: translateY(15%); opacity: 1; } 50% { transform: translateY(20%); opacity: 1; } 70% { transform: translateY(12%); opacity: 1; } 100% { transform: translateY(15%); opacity: 1; } }
+        .animate-peek-float { animation: peekFloat 4s ease-out forwards; }
+        .animate-peek-float-delay-1 { animation: peekFloat 4s ease-out 0.4s forwards; transform: translateY(100%); opacity: 0; }
+        .animate-peek-float-delay-2 { animation: peekFloat 4s ease-out 0.8s forwards; transform: translateY(100%); opacity: 0; }
+        @keyframes bounceHappy { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-15px) scale(1.05); } }
+        .animate-bounce-happy { animation: bounceHappy 0.6s infinite ease-in-out; }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center text-gray-800">
+
+    <div class="relative w-full max-w-lg h-[100dvh] flex flex-col p-3 z-10">
+        
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-3 glass-panel p-3 rounded-2xl shrink-0 z-20">
+            <div>
+                <button id="btnBackToMenuFromGame" class="hidden inline-flex items-center gap-2 bg-amber-100 text-amber-800 font-bold px-3 py-1.5 sm:px-4 sm:py-2 rounded-full shadow-[0_4px_0_#fbd38d] border-2 border-amber-300 hover:-translate-x-1 active:translate-y-1 active:shadow-none transition-all mb-1 text-xs sm:text-sm">
+                    <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                    Kembali
+                </button>
+                <h1 id="gameHeaderTitle" class="text-xl sm:text-2xl text-emerald-800 font-bold drop-shadow-sm tracking-wide">Pilih Permainan</h1>
+                <p id="gameHeaderSubtitle" class="text-emerald-600 text-xs sm:text-sm font-semibold">Tunggu arahan...</p>
+                <div id="roundDisplay" class="text-xs font-bold text-amber-700 bg-amber-100 px-3 py-1 rounded-full shadow-inner mt-1 hidden inline-block border border-amber-300">Pusingan 1 / 100</div>
+            </div>
+            <div id="timerContainer" class="bg-gradient-to-r from-emerald-500 to-teal-500 text-white px-3 py-2 rounded-xl font-bold text-xl sm:text-2xl flex items-center gap-2 shadow-md border-2 border-white">
+                ⏱ <span id="timerDisplay">00:00</span>
+            </div>
+        </div>
+
+        <!-- GAME 1: Cari Kata -->
+        <div id="game1Container" class="hidden flex-1 flex-col overflow-hidden gap-3 pb-2">
+            <div class="flex-1 flex items-center justify-center relative w-full h-full" id="boardContainer">
+                <div id="grid" class="grid-container"></div>
+            </div>
+            <div class="glass-panel rounded-2xl p-3 shadow-lg flex flex-col gap-2 shrink-0">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-emerald-800 font-bold text-sm uppercase tracking-wider">Senarai Kata</h2>
+                    <button class="showLeaderboardBtn text-xs bg-amber-400 text-amber-900 px-3 py-1 rounded-full font-bold shadow hover:bg-amber-300 active:scale-95 transition-transform">🏆 Ranking</button>
+                </div>
+                <div id="wordList" class="flex flex-wrap gap-2 justify-center"></div>
+            </div>
+        </div>
+
+        <!-- GAME 2: Uji Mata -->
+        <div id="game2Container" class="hidden flex-1 flex-col w-full max-w-sm mx-auto justify-between pb-2">
+            <div class="flex-1 flex flex-col items-center justify-center w-full gap-4">
+                <div class="quran-target-card rounded-[1.5rem] p-4 w-full flex flex-col items-center justify-center text-center gap-1 relative overflow-hidden shrink-0 mt-4">
+                    <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-amber-300 via-orange-400 to-amber-300"></div>
+                    <p class="text-amber-700 font-black text-[10px] sm:text-xs uppercase tracking-widest bg-amber-100 px-3 py-1 rounded-full shadow-sm border border-amber-200 mt-1 relative z-10">✨ Cari Perkataan Ini ✨</p>
+                    <div id="targetQuranWord" class="font-arabic text-[3.5rem] sm:text-7xl font-bold text-emerald-900 leading-[1.8] sm:leading-[2.2] py-2 relative z-0" dir="rtl"></div>
+                </div>
+                <div id="quranOptionsGrid" class="grid grid-cols-2 gap-3 w-full"></div>
+                <div class="w-full flex justify-end">
+                    <button class="showLeaderboardBtn text-xs bg-amber-400 text-amber-900 px-4 py-1.5 rounded-full font-bold shadow hover:bg-amber-300 active:scale-95 transition-transform">🏆 Lihat Ranking</button>
+                </div>
+            </div>
+            <div class="glass-panel rounded-2xl p-3 shadow-lg mt-2 flex justify-center items-center gap-2 shrink-0">
+                <span class="text-emerald-800 font-bold text-sm">Kemajuan:</span>
+                <div id="quranProgress" class="flex gap-1 text-xl sm:text-2xl font-bold">
+                    <span id="prog-0" class="text-gray-300">★</span><span id="prog-1" class="text-gray-300">★</span><span id="prog-2" class="text-gray-300">★</span><span id="prog-3" class="text-gray-300">★</span><span id="prog-4" class="text-gray-300">★</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- GAME 3: Tajwid -->
+        <div id="game3Container" class="hidden flex-1 flex-col w-full max-w-sm mx-auto justify-between pb-2">
+            <div class="flex-1 flex flex-col items-center justify-center w-full gap-5">
+                <div class="quran-target-card rounded-3xl p-5 w-full flex flex-col items-center justify-center text-center">
+                    <p class="text-amber-700 font-black text-xs uppercase bg-amber-100 px-3 py-1 rounded-full border border-amber-200 shadow-sm">Pilih Hukum Tajwid</p>
+                    <div id="tajwidTargetWord" class="font-arabic text-4xl sm:text-6xl font-bold text-emerald-900 leading-[1.8] sm:leading-[2.2] py-3 w-full" dir="rtl"></div>
+                </div>
+                <div id="tajwidOptionsGrid" class="flex flex-col gap-3 w-full"></div>
+                <div class="w-full flex justify-end">
+                    <button class="showLeaderboardBtn text-xs bg-amber-400 text-amber-900 px-4 py-1.5 rounded-full font-bold shadow hover:bg-amber-300 active:scale-95 transition-transform">🏆 Lihat Ranking</button>
+                </div>
+            </div>
+            <div class="glass-panel rounded-2xl p-3 shadow-lg mt-2 flex justify-center items-center gap-2 shrink-0">
+                <span class="text-emerald-800 font-bold text-sm">Kemajuan:</span>
+                <div id="tajwidProgress" class="flex gap-1 text-xl sm:text-2xl font-bold">
+                    <span id="tprog-0" class="text-gray-300">★</span><span id="tprog-1" class="text-gray-300">★</span><span id="tprog-2" class="text-gray-300">★</span><span id="tprog-3" class="text-gray-300">★</span><span id="tprog-4" class="text-gray-300">★</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN MENU OVERLAY -->
+    <div id="overlay" class="fixed inset-0 z-50 flex items-center justify-center w-screen h-screen">
+        <div id="menuBabies" class="absolute bottom-0 w-full flex justify-center items-end gap-3 sm:gap-8 pointer-events-none z-0 pb-2">
+            <!-- Baby 1 -->
+            <div class="w-24 sm:w-32 animate-peek-float filter drop-shadow-lg"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M20,50 Q50,100 80,50 Q80,20 50,20 Q20,20 20,50 Z" fill="#fef08a"/><path d="M25,60 Q50,80 75,60" fill="none" stroke="#fde047" stroke-width="2"/><circle cx="50" cy="40" r="25" fill="#fcd34d"/><path d="M35,40 Q40,45 45,40" fill="none" stroke="#78350f" stroke-width="2" stroke-linecap="round"/><path d="M55,40 Q60,45 65,40" fill="none" stroke="#78350f" stroke-width="2" stroke-linecap="round"/></svg></div>
+            <!-- Baby 2 -->
+            <div class="w-24 sm:w-32 animate-peek-float-delay-1 filter drop-shadow-lg"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect x="30" y="50" width="40" height="40" rx="15" fill="#ffffff"/><circle cx="40" cy="60" r="5" fill="#eab308"/><circle cx="60" cy="70" r="5" fill="#eab308"/><circle cx="50" cy="80" r="5" fill="#eab308"/><circle cx="50" cy="35" r="25" fill="#fde047"/><circle cx="40" cy="35" r="3" fill="#1e3a8a"/><circle cx="60" cy="35" r="3" fill="#1e3a8a"/><path d="M45,45 Q50,50 55,45" fill="none" stroke="#78350f" stroke-width="2" stroke-linecap="round"/></svg></div>
+            <!-- Baby 3 -->
+            <div class="w-24 sm:w-32 animate-peek-float-delay-2 filter drop-shadow-lg"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M35,50 Q50,90 65,50" fill="#fcd34d"/><path d="M30,80 Q50,100 70,80 L70,90 Q50,110 30,90 Z" fill="#ffffff"/><circle cx="50" cy="45" r="25" fill="#fef08a"/><path d="M25,45 Q30,10 50,15 Q70,10 75,45" fill="none" stroke="#451a03" stroke-width="7" stroke-linecap="round"/><path d="M40,20 Q50,0 60,20" fill="none" stroke="#451a03" stroke-width="6" stroke-linecap="round"/><circle cx="40" cy="45" r="4.5" fill="#000"/><circle cx="41" cy="44" r="1.5" fill="#fff"/><circle cx="60" cy="45" r="4.5" fill="#000"/><circle cx="61" cy="44" r="1.5" fill="#fff"/></svg></div>
+        </div>
+
+        <div class="bg-white rounded-[2rem] p-6 sm:p-8 text-center max-w-[90%] sm:max-w-sm w-full shadow-2xl relative animate-bounceIn border-8 border-emerald-100 max-h-[90vh] flex flex-col overflow-y-auto custom-scrollbar z-10">
+            <div class="text-5xl sm:text-6xl mb-2 relative z-10 animate-bounce-slow shrink-0">🕌</div>
+            <h2 id="modalTitle" class="text-2xl sm:text-4xl font-black mb-2 text-emerald-600 drop-shadow-sm relative z-10 shrink-0">Jom Main!</h2>
+            <div id="starsContainer" class="flex justify-center items-center h-14 sm:h-16 mb-2 relative z-10 hidden shrink-0"></div>
+            <p id="modalDesc" class="text-gray-600 mb-5 text-sm sm:text-base font-bold relative z-10 shrink-0">Pilih permainan dan tingkatkan memori anda.</p>
+            
+            <!-- STEP 1 -->
+            <div id="step1Name" class="relative z-10 w-full flex flex-col gap-3 animate-bounceIn shrink-0 pb-2">
+                <div class="bg-emerald-50 rounded-2xl p-4 border-4 border-emerald-100 shadow-inner relative z-20">
+                    <label class="block text-emerald-800 font-bold mb-2 text-sm">👤 Siapa yang main?</label>
+                    <div class="relative w-full text-left select-none">
+                        <div id="customSelectTrigger" class="w-full px-4 py-3 rounded-xl border-4 border-emerald-300 bg-white text-emerald-700 font-bold text-center shadow-sm cursor-pointer hover:border-emerald-400 transition-colors flex justify-between items-center active:scale-[0.98]">
+                            <span id="customSelectLabel" class="truncate">-- Pilih Pemain --</span>
+                            <svg class="fill-current h-5 w-5 text-emerald-500 shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                        </div>
+                        <div id="customSelectOptions" class="absolute left-0 right-0 top-[110%] bg-white border-4 border-emerald-200 rounded-xl shadow-2xl hidden flex-col"></div>
+                    </div>
+                </div>
+                <input type="text" id="playerNameInput" placeholder="✍️ Taip nama baru..." maxlength="15" class="w-full px-4 py-3 hidden rounded-xl border-4 border-amber-300 focus:border-amber-500 focus:outline-none text-center font-bold text-amber-700 shadow-sm transition-all duration-300 relative z-10">
+                <button id="btnNextToGameSelect" class="mt-2 w-full bg-gradient-to-b from-emerald-400 to-emerald-600 text-white font-black text-lg py-3 rounded-xl shadow-[0_6px_0_#047857] hover:translate-y-1 hover:shadow-[0_3px_0_#047857] active:translate-y-2 active:shadow-none transition-all duration-150">Seterusnya 🚀</button>
+            </div>
+
+            <!-- STEP 2 -->
+            <div id="step2GameMode" class="hidden relative z-10 flex-col gap-3 animate-bounceIn shrink-0 pb-2">
+                <button id="btnBackToName" class="self-start flex items-center gap-2 bg-amber-100 text-amber-800 font-bold px-4 py-2 rounded-full shadow-[0_4px_0_#fbd38d] border-2 border-amber-300 hover:-translate-x-1 active:translate-y-1 active:shadow-none transition-all mb-1 text-sm"><svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg> Kembali</button>
+                <button class="gamemode-btn w-full bg-teal-100 text-teal-800 font-bold py-3 px-3 rounded-2xl shadow-[0_5px_0_#14b8a6] border-2 border-teal-400 hover:translate-y-1 hover:shadow-[0_2px_0_#14b8a6] active:translate-y-2 active:shadow-none transition-all flex flex-col items-center" data-game="carikata"><span class="text-3xl mb-1">🔍</span><span class="text-xs uppercase">Permainan 1:</span><span class="text-xl font-black">Cari Kata</span></button>
+                <button class="gamemode-btn w-full bg-amber-100 text-amber-800 font-bold py-3 px-3 rounded-2xl shadow-[0_5px_0_#f59e0b] border-2 border-amber-400 hover:translate-y-1 hover:shadow-[0_2px_0_#f59e0b] active:translate-y-2 active:shadow-none transition-all flex flex-col items-center" data-game="ujimata"><span class="text-3xl mb-1">📖</span><span class="text-xs uppercase">Permainan 2:</span><span class="text-xl font-arabic font-black mt-1">Uji Mata Iqra'</span></button>
+                <button class="gamemode-btn w-full bg-indigo-100 text-indigo-800 font-bold py-3 px-3 rounded-2xl shadow-[0_5px_0_#6366f1] border-2 border-indigo-400 hover:translate-y-1 hover:shadow-[0_2px_0_#6366f1] active:translate-y-2 active:shadow-none transition-all flex flex-col items-center" data-game="tajwid"><span class="text-3xl mb-1">🕋</span><span class="text-xs uppercase">Permainan 3:</span><span class="text-xl font-black mt-1">Kuiz Tajwid</span></button>
+            </div>
+
+            <!-- STEP 3 -->
+            <div id="step3Level" class="hidden relative z-10 flex-col gap-3 animate-bounceIn shrink-0 pb-2">
+                <button id="btnBackToMode" class="self-start flex items-center gap-2 bg-amber-100 text-amber-800 font-bold px-4 py-2 rounded-full shadow-[0_4px_0_#fbd38d] border-2 border-amber-300 hover:-translate-x-1 active:translate-y-1 active:shadow-none transition-all mb-1 text-sm"><svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg> Kembali</button>
+                <button class="level-btn w-full bg-emerald-100 text-emerald-800 font-bold text-lg py-3 px-4 rounded-xl shadow-[0_5px_0_#10b981] border-2 border-emerald-400 hover:translate-y-1 hover:shadow-[0_2px_0_#10b981] active:translate-y-2 active:shadow-none transition-all flex justify-between items-center" data-level="mubtadi"><span>🌱 Mubtadi</span> <span class="text-xs font-black bg-emerald-200 px-2 py-1 rounded-lg">Mudah</span></button>
+                <button class="level-btn w-full bg-amber-100 text-amber-800 font-bold text-lg py-3 px-4 rounded-xl shadow-[0_5px_0_#f59e0b] border-2 border-amber-400 hover:translate-y-1 hover:shadow-[0_2px_0_#f59e0b] active:translate-y-2 active:shadow-none transition-all flex justify-between items-center" data-level="mutawassit"><span>🌟 Mutawassit</span> <span class="text-xs font-black bg-amber-200 px-2 py-1 rounded-lg">Sederhana</span></button>
+                <button class="level-btn w-full bg-orange-100 text-orange-800 font-bold text-lg py-3 px-4 rounded-xl shadow-[0_5px_0_#f97316] border-2 border-orange-400 hover:translate-y-1 hover:shadow-[0_2px_0_#f97316] active:translate-y-2 active:shadow-none transition-all flex justify-between items-center" data-level="muntahi"><span>🔥 Muntahi</span> <span class="text-xs font-black bg-orange-200 px-2 py-1 rounded-lg">Sukar</span></button>
+            </div>
+
+            <!-- END GAME BUTTONS -->
+            <div id="stepEndGame" class="hidden relative z-10 w-full flex-col gap-3 mt-2 animate-bounceIn shrink-0 pb-2">
+                <button id="btnNextRound" class="w-full bg-gradient-to-b from-amber-400 to-orange-500 text-white font-black text-lg py-3 rounded-xl shadow-[0_6px_0_#ea580c] hover:translate-y-1 hover:shadow-[0_3px_0_#ea580c] active:translate-y-2 active:shadow-none transition-all duration-200 hidden">Pusingan Seterusnya ⏩</button>
+                <button id="btnPlayAgain" class="w-full bg-gradient-to-b from-emerald-400 to-teal-500 text-white font-black text-lg py-3 rounded-xl shadow-[0_5px_0_#0f766e] hover:translate-y-1 hover:shadow-[0_2px_0_#0f766e] active:translate-y-2 active:shadow-none transition-all duration-200">🔄 Main Semula</button>
+                <button id="btnHome" class="w-full bg-gray-200 text-gray-700 font-bold text-lg py-3 rounded-xl shadow-[0_4px_0_#9ca3af] hover:translate-y-1 hover:shadow-[0_2px_0_#9ca3af] active:translate-y-2 active:shadow-none transition-all duration-200">🏠 Menu Utama</button>
+                <button class="showLeaderboardBtn w-full bg-amber-100 text-amber-900 border-2 border-amber-300 font-bold text-sm py-2 rounded-xl shadow active:scale-95 transition-all mt-1">🏆 Lihat Ranking Rekod</button>
+                
+                <div id="winBabies" class="w-full flex justify-center items-end gap-2 mt-4 hidden">
+                    <div class="w-12 sm:w-16 animate-bounce-happy" style="animation-delay: 0s;"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M20,50 Q50,100 80,50 Q80,20 50,20 Q20,20 20,50 Z" fill="#fef08a"/><circle cx="50" cy="40" r="25" fill="#fcd34d"/><path d="M35,40 Q40,45 45,40" fill="none" stroke="#78350f" stroke-width="2" stroke-linecap="round"/><path d="M55,40 Q60,45 65,40" fill="none" stroke="#78350f" stroke-width="2" stroke-linecap="round"/></svg></div>
+                    <div class="w-12 sm:w-16 animate-bounce-happy" style="animation-delay: 0.15s;"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect x="30" y="50" width="40" height="40" rx="15" fill="#ffffff"/><circle cx="40" cy="60" r="5" fill="#eab308"/><circle cx="60" cy="70" r="5" fill="#eab308"/><circle cx="50" cy="35" r="25" fill="#fde047"/><circle cx="40" cy="35" r="3" fill="#1e3a8a"/><circle cx="60" cy="35" r="3" fill="#1e3a8a"/><path d="M45,45 Q50,50 55,45" fill="none" stroke="#78350f" stroke-width="2" stroke-linecap="round"/></svg></div>
+                    <div class="w-12 sm:w-16 animate-bounce-happy" style="animation-delay: 0.3s;"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><path d="M35,50 Q50,90 65,50" fill="#fcd34d"/><path d="M30,80 Q50,100 70,80 L70,90 Q50,110 30,90 Z" fill="#ffffff"/><circle cx="50" cy="45" r="25" fill="#fef08a"/><path d="M25,45 Q30,10 50,15 Q70,10 75,45" fill="none" stroke="#451a03" stroke-width="7" stroke-linecap="round"/><path d="M40,20 Q50,0 60,20" fill="none" stroke="#451a03" stroke-width="6" stroke-linecap="round"/><circle cx="40" cy="45" r="4.5" fill="#000"/><circle cx="41" cy="44" r="1.5" fill="#fff"/><circle cx="60" cy="45" r="4.5" fill="#000"/><circle cx="61" cy="44" r="1.5" fill="#fff"/></svg></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LEADERBOARD OVERLAY -->
+    <div id="leaderboardOverlay" class="fixed inset-0 z-[60] flex items-center justify-center w-screen h-screen hidden">
+        <div class="bg-white rounded-[2rem] p-5 w-full max-w-[90%] sm:max-w-sm shadow-2xl relative flex flex-col max-h-[85vh] animate-bounceIn border-4 border-amber-200">
+            <h2 class="text-2xl sm:text-3xl font-black mb-1 text-amber-500 text-center drop-shadow-sm shrink-0">🏆 Rekod Terbaik</h2>
+            <div class="flex justify-center gap-1 sm:gap-2 mb-3 mt-2 shrink-0">
+                <button id="tabCariKata" class="lb-tab bg-teal-500 text-white px-3 py-1.5 rounded-lg font-bold text-xs sm:text-sm shadow flex-1">Cari Kata</button>
+                <button id="tabUjiMata" class="lb-tab bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg font-bold text-xs sm:text-sm shadow flex-1">Uji Mata</button>
+                <button id="tabTajwid" class="lb-tab bg-gray-200 text-gray-600 px-3 py-1.5 rounded-lg font-bold text-xs sm:text-sm shadow flex-1">Tajwid</button>
+            </div>
+            <div id="leaderboardList" class="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-2 pr-1 mb-4 min-h-[200px]">
+                <div class="text-center text-gray-400 my-4 text-sm font-bold">Memuatkan data...</div>
+            </div>
+            <button id="closeLeaderboardBtn" class="w-full bg-gray-800 text-white font-bold text-lg py-3 rounded-xl shadow-md hover:bg-gray-700 active:scale-95 transition-transform shrink-0">Tutup</button>
+        </div>
+    </div>
+
+    <script type="module">
+        // Firebase Setup
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'hab-permainan-islami-v3';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "dummy" };
+        
+        let app, auth, db, currentUser;
+        try {
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+            const initAuth = async () => {
+                if (typeof __initial_auth_token !== 'undefined') await signInWithCustomToken(auth, __initial_auth_token);
+                else await signInAnonymously(auth);
+                currentUser = auth.currentUser;
+            };
+            initAuth().catch(() => { console.log("Firebase dimatikan untuk offline mode.") });
+        } catch(e) { console.warn("Firebase tidak diaktifkan."); }
+
+        // Data Permainan
+        const CARI_KATA_POOL = ['SOLAT', 'ZAKAT', 'PUASA', 'SYUKUR', 'TAQWA', 'IMAN', 'IHSAN', 'HALAL', 'HARAM', 'WUDUK', 'AZAN', 'IKHLAS', 'DOA', 'ZIKIR', 'PAHALA', 'SYURGA', 'NERAKA', 'SABAR', 'REDHA', 'TASBIH'];
+        const QURAN_WORDS_POOL = ['أَبَدًا', 'أَحَدٌ', 'أَخَذَ', 'أَمَرَ', 'أَمِنَ', 'أَنَا', 'بَخِلَ', 'بَرَزَ', 'بَسَطَ', 'بَصِيرٌ', 'بَعَثَ', 'بَلَغَ', 'تَبَّ', 'تَرَكَ', 'تَسْعَى', 'تَشَاءُ', 'تَصْلَى', 'تَعَالَى', 'تَقْوَى', 'تَكَادُ', 'ثَقُلَتْ', 'ثَلَاثَة', 'ثَمَنًا', 'ثَوَابًا', 'جَاءَ', 'جَاعِلٌ', 'جَبَلٍ', 'جَدِيدٍ', 'جَعَلَ', 'جَلَالِ', 'جَمَعَ', 'جَمِيعًا', 'حَاسِدٍ', 'حَافِظٌ', 'حَاقَ', 'حَبْلٌ', 'حَتَّى', 'حَجَرٍ', 'حَدِيثُ', 'حَرَّمَ', 'حَسَدَ', 'حَسَنَة', 'حَشَرَ', 'خَابَ', 'خَادِعُ', 'خَارِجِينَ', 'خَاصَّةً', 'خَاطِئَةٍ', 'خَالِدِينَ', 'خَالِقُ'];
+        const TAJWID_QUESTIONS = {
+            mubtadi: [{ pre: "مِ", hi: "نْ خَ", post: "وْفٍ", ans: "Izhar Halqi", distractors: ["Ikhfa' Hakiki", "Iqlab"] }, { pre: "عَذَا", hi: "بٌ أَ", post: "لِيمٌ", ans: "Izhar Halqi", distractors: ["Idgham Bighunnah", "Ikhfa' Hakiki"] }, { pre: "مِ", hi: "نْ شَ", post: "رِّ", ans: "Ikhfa' Hakiki", distractors: ["Izhar Halqi", "Idgham Bilaghunnah"] }, { pre: "فَ", hi: "مَنْ يَعْ", post: "مَلْ", ans: "Idgham Bighunnah", distractors: ["Iqlab", "Izhar Halqi"] }, { pre: "مِ", hi: "نْ بَ", post: "عْدِ", ans: "Iqlab", distractors: ["Ikhfa' Hakiki", "Idgham Bighunnah"] }],
+            mutawassit: [{ pre: "يَ", hi: "جْ", post: "عَلُونَ", ans: "Qalqalah Sughra", distractors: ["Mad Asli", "Izhar Halqi"] }, { pre: "يَ", hi: "قُو", post: "لُ", ans: "Mad Asli", distractors: ["Mad Badal", "Mad Lin"] }, { pre: "ٱلصَّ", hi: "مَ", post: "دُ", ans: "Mad Arid Lissukun", distractors: ["Mad Asli", "Qalqalah Kubra"] }, { pre: "سَ", hi: "وَاءٌ", post: "", ans: "Mad Wajib Muttasil", distractors: ["Mad Jaiz Munfasil", "Mad Arid Lissukun"] }, { pre: "بِ", hi: "مَا أُ", post: "نْزِلَ", ans: "Mad Jaiz Munfasil", distractors: ["Mad Wajib Muttasil", "Mad Badal"] }],
+            muntahi: [{ pre: "", hi: "صِ", post: "رَاطَ", ans: "Isti'la' & Safir", distractors: ["Hams & Tafkhim", "Qalqalah & Jahr"] }, { pre: "ٱلْ", hi: "حَ", post: "مْدُ", ans: "Hams", distractors: ["Jahr", "Isti'la'"] }, { pre: "مَا", hi: "لِ", post: "كِ", ans: "Tarqiq (Kasrah)", distractors: ["Tafkhim", "Qalqalah"] }, { pre: "ٱل", hi: "رَّ", post: "حْمَٰنِ", ans: "Tafkhim & Takrir", distractors: ["Tarqiq & Hams", "Qalqalah"] }]
+        };
+
+        // State variables
+        let playerName = "", savedUsers = JSON.parse(localStorage.getItem('islamiUsers') || '[]'), userProgress = JSON.parse(localStorage.getItem('islamiProgress') || '{}');
+        let selectedGameMode = "", currentLevel = "", currentAppRound = 1, timeRemaining = 0, timeLimit = 0, timerInterval;
+        const MAX_ROUNDS = 100;
+        let isBgmPlaying = false, audioCtx, bgmTimeout;
+
+        // Elements
+        const gamemodeBtns = document.querySelectorAll('.gamemode-btn'), levelBtns = document.querySelectorAll('.level-btn'), showLeaderboardBtns = document.querySelectorAll('.showLeaderboardBtn');
+        const btnNextRound = document.getElementById('btnNextRound'), gameHeaderTitle = document.getElementById('gameHeaderTitle'), gameHeaderSubtitle = document.getElementById('gameHeaderSubtitle');
+        const roundDisplay = document.getElementById('roundDisplay'), timerContainer = document.getElementById('timerContainer'), timerDisplay = document.getElementById('timerDisplay');
+        
+        const game1Container = document.getElementById('game1Container'), gridEl = document.getElementById('grid'), wordListEl = document.getElementById('wordList');
+        const game2Container = document.getElementById('game2Container'), targetQuranWordEl = document.getElementById('targetQuranWord'), quranOptionsGridEl = document.getElementById('quranOptionsGrid');
+        const game3Container = document.getElementById('game3Container'), tajwidTargetWordEl = document.getElementById('tajwidTargetWord'), tajwidOptionsGridEl = document.getElementById('tajwidOptionsGrid');
+        
+        const leaderboardOverlay = document.getElementById('leaderboardOverlay'), leaderboardList = document.getElementById('leaderboardList'), closeLeaderboardBtn = document.getElementById('closeLeaderboardBtn');
+        const tabCariKata = document.getElementById('tabCariKata'), tabUjiMata = document.getElementById('tabUjiMata'), tabTajwid = document.getElementById('tabTajwid');
+
+        // Progress Logic
+        function getUnlockedRound() {
+            if (!userProgress[playerName]) userProgress[playerName] = {};
+            if (!userProgress[playerName][selectedGameMode]) userProgress[playerName][selectedGameMode] = {};
+            if (!userProgress[playerName][selectedGameMode][currentLevel]) userProgress[playerName][selectedGameMode][currentLevel] = 1;
+            return userProgress[playerName][selectedGameMode][currentLevel];
+        }
+        function unlockNextRound() {
+            let currentUnlocked = getUnlockedRound();
+            if (currentAppRound >= currentUnlocked && currentAppRound < MAX_ROUNDS) {
+                userProgress[playerName][selectedGameMode][currentLevel] = currentAppRound + 1;
+                localStorage.setItem('islamiProgress', JSON.stringify(userProgress));
+            }
+        }
+
+        // Custom Dropdown Logic
+        let selectedPlayerValue = "";
+        const playerNameInput = document.getElementById('playerNameInput'), customSelectTrigger = document.getElementById('customSelectTrigger');
+        const customSelectLabel = document.getElementById('customSelectLabel'), customSelectOptions = document.getElementById('customSelectOptions'), overlay = document.getElementById('overlay');
+        
+        function populateUsers() {
+            customSelectOptions.innerHTML = '';
+            const defaultOpt = document.createElement('div');
+            defaultOpt.className = "custom-option px-4 py-3 border-b-2 border-emerald-50 text-gray-500 font-bold text-center cursor-pointer hover:bg-emerald-50";
+            defaultOpt.innerText = "-- Pilih Pemain --";
+            defaultOpt.onclick = () => selectPlayerOption("", "-- Pilih Pemain --");
+            customSelectOptions.appendChild(defaultOpt);
+            
+            savedUsers.forEach(user => {
+                const opt = document.createElement('div');
+                opt.className = "custom-option px-4 py-3 border-b-2 border-emerald-50 text-emerald-800 font-bold text-center cursor-pointer hover:bg-emerald-100 flex justify-center items-center gap-2";
+                opt.innerHTML = `👤 ${user}`;
+                opt.onclick = () => selectPlayerOption(user, user);
+                customSelectOptions.appendChild(opt);
+            });
+            
+            const newOpt = document.createElement('div');
+            newOpt.className = "custom-option px-4 py-3 bg-amber-50 text-amber-600 font-black text-center cursor-pointer hover:bg-amber-100 flex justify-center items-center gap-2";
+            newOpt.innerHTML = `✨ + Tambah Baru`;
+            newOpt.onclick = () => selectPlayerOption("new", "✨ Tambah Baru");
+            customSelectOptions.appendChild(newOpt);
+        }
+        populateUsers();
+
+        customSelectTrigger.addEventListener('click', () => {
+            playPop(); customSelectOptions.classList.toggle('hidden'); customSelectOptions.classList.toggle('custom-dropdown-open');
+        });
+        
+        document.addEventListener('click', (e) => {
+            if (!customSelectTrigger.contains(e.target) && !customSelectOptions.contains(e.target)) { 
+                customSelectOptions.classList.add('hidden'); customSelectOptions.classList.remove('custom-dropdown-open'); 
+            }
+        });
+        
+        function selectPlayerOption(value, labelText) {
+            playPlink(); selectedPlayerValue = value; customSelectLabel.innerText = labelText.replace('👤 ', '');
+            customSelectOptions.classList.add('hidden'); customSelectOptions.classList.remove('custom-dropdown-open');
+            if (value === 'new') { playerNameInput.classList.remove('hidden'); playerNameInput.focus(); } else { playerNameInput.classList.add('hidden'); }
+        }
+
+        // Navigation
+        function resetModals() {
+            ['step1Name', 'step2GameMode', 'step3Level', 'stepEndGame', 'starsContainer', 'winBabies'].forEach(id => {
+                document.getElementById(id).classList.add('hidden'); document.getElementById(id).classList.remove('flex', 'animate-bounceIn');
+            });
+            btnNextRound.classList.add('hidden');
+        }
+
+        function goHome() {
+            resetModals(); stopBGM(); clearInterval(timerInterval);
+            document.getElementById('btnBackToMenuFromGame').classList.add('hidden');
+            overlay.classList.remove('hidden'); document.getElementById('menuBabies').classList.remove('hidden');
+            document.getElementById('step1Name').classList.remove('hidden'); document.getElementById('step1Name').classList.add('flex', 'animate-bounceIn');
+            
+            populateUsers(); selectedPlayerValue = ""; customSelectLabel.innerText = "-- Pilih Pemain --"; 
+            playerNameInput.classList.add('hidden'); playerNameInput.value = "";
+            document.getElementById('modalTitle').innerText = "Jom Main!"; 
+            document.getElementById('modalTitle').className = "text-2xl sm:text-4xl font-black mb-2 text-emerald-600 drop-shadow-sm relative z-10 shrink-0"; 
+            document.getElementById('modalDesc').innerText = "Sila pilih atau masukkan nama untuk direkodkan.";
+            
+            game1Container.classList.add('hidden'); game2Container.classList.add('hidden'); game3Container.classList.add('hidden'); 
+            roundDisplay.classList.add('hidden'); timerDisplay.innerText = "00:00";
+        }
+
+        document.getElementById('btnNextToGameSelect').addEventListener('click', () => {
+            playCuteClick(); let inputName = "";
+            if (selectedPlayerValue === 'new') {
+                inputName = playerNameInput.value.trim();
+                if(inputName.length === 0) { 
+                    playerNameInput.classList.add('border-red-500', 'animate-pulse'); 
+                    setTimeout(() => playerNameInput.classList.remove('border-red-500', 'animate-pulse'), 1000); return; 
+                }
+                if (!savedUsers.includes(inputName)) { savedUsers.push(inputName); localStorage.setItem('islamiUsers', JSON.stringify(savedUsers)); }
+            } else if (selectedPlayerValue !== '') { 
+                inputName = selectedPlayerValue; 
+            } else {
+                customSelectTrigger.classList.add('border-red-500', 'animate-pulse'); 
+                setTimeout(() => customSelectTrigger.classList.remove('border-red-500', 'animate-pulse'), 1000); return;
+            }
+            
+            playerName = inputName; resetModals();
+            document.getElementById('step2GameMode').classList.remove('hidden'); document.getElementById('step2GameMode').classList.add('flex', 'animate-bounceIn');
+            document.getElementById('modalTitle').innerText = "Pilih Permainan"; document.getElementById('modalDesc').innerText = `Hai ${playerName}! Apa yang anda ingin main?`;
+        });
+
+        document.getElementById('btnBackToMenuFromGame').addEventListener('click', () => {
+            playCuteClick(); stopBGM(); clearInterval(timerInterval);
+            game1Container.classList.add('hidden'); game2Container.classList.add('hidden'); game3Container.classList.add('hidden');
+            document.getElementById('btnBackToMenuFromGame').classList.add('hidden'); roundDisplay.classList.add('hidden');
+            
+            overlay.classList.remove('hidden'); document.getElementById('menuBabies').classList.remove('hidden'); resetModals();
+            document.getElementById('step3Level').classList.remove('hidden'); document.getElementById('step3Level').classList.add('flex', 'animate-bounceIn');
+            document.getElementById('modalTitle').innerText = "Pilih Tahap"; document.getElementById('modalTitle').className = "text-2xl sm:text-4xl font-black mb-2 text-emerald-600 drop-shadow-sm relative z-10 shrink-0";
+            let gName = selectedGameMode === 'carikata' ? "Cari Kata" : (selectedGameMode === 'ujimata' ? "Uji Mata Iqra'" : "Kuiz Tajwid");
+            document.getElementById('modalDesc').innerText = `Tahap kesukaran untuk ${gName}:`;
+        });
+
+        document.getElementById('btnBackToName').addEventListener('click', () => { playCuteClick(); resetModals(); document.getElementById('step1Name').classList.remove('hidden'); document.getElementById('step1Name').classList.add('flex', 'animate-bounceIn'); document.getElementById('modalTitle').innerText = "Jom Main!"; document.getElementById('modalDesc').innerText = "Sila pilih atau masukkan nama untuk direkodkan."; });
+        document.getElementById('btnBackToMode').addEventListener('click', () => { playCuteClick(); resetModals(); document.getElementById('step2GameMode').classList.remove('hidden'); document.getElementById('step2GameMode').classList.add('flex', 'animate-bounceIn'); document.getElementById('modalTitle').innerText = "Pilih Permainan"; document.getElementById('modalDesc').innerText = "Apa yang anda ingin uji hari ini?"; });
+
+        gamemodeBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                playCuteClick(); selectedGameMode = e.currentTarget.getAttribute('data-game'); resetModals();
+                document.getElementById('step3Level').classList.remove('hidden'); document.getElementById('step3Level').classList.add('flex', 'animate-bounceIn');
+                document.getElementById('modalTitle').innerText = "Pilih Tahap"; let gName = selectedGameMode === 'carikata' ? "Cari Kata" : (selectedGameMode === 'ujimata' ? "Uji Mata Iqra'" : "Kuiz Tajwid"); document.getElementById('modalDesc').innerText = `Tahap kesukaran untuk ${gName}:`;
+            });
+        });
+
+        levelBtns.forEach(btn => { btn.addEventListener('click', (e) => { playCuteClick(); startGame(e.currentTarget.getAttribute('data-level'), false); }); });
+        document.getElementById('btnPlayAgain').addEventListener('click', () => { playCuteClick(); startGame(currentLevel, false); });
+        btnNextRound.addEventListener('click', () => { playCuteClick(); if (currentAppRound < MAX_ROUNDS) { currentAppRound++; startGame(currentLevel, true); } });
+        document.getElementById('btnHome').addEventListener('click', () => { playCuteClick(); goHome(); });
+
+        // Audio System
+        let audioUnlocked = false;
+        function unlockAudio() {
+            if (audioUnlocked) return;
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            if ('speechSynthesis' in window) { const initUtterance = new SpeechSynthesisUtterance(""); initUtterance.volume = 0; window.speechSynthesis.speak(initUtterance); }
+            try { const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain(); gain.gain.value = 0; osc.connect(gain); gain.connect(audioCtx.destination); osc.start(0); osc.stop(audioCtx.currentTime + 0.001); } catch(e) {}
+            audioUnlocked = true; document.removeEventListener('click', unlockAudio); document.removeEventListener('touchstart', unlockAudio);
+        }
+        document.addEventListener('click', unlockAudio, { passive: true }); document.addEventListener('touchstart', unlockAudio, { passive: true });
+        
+        function playTone(type, freqStart, freqEnd, duration, volStart) {
+            if (!audioUnlocked) unlockAudio(); if (!audioCtx) return;
+            const osc = audioCtx.createOscillator(), gain = audioCtx.createGain(); osc.type = type;
+            osc.frequency.setValueAtTime(freqStart, audioCtx.currentTime);
+            if(freqEnd) osc.frequency.exponentialRampToValueAtTime(freqEnd, audioCtx.currentTime + duration);
+            gain.gain.setValueAtTime(volStart, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+            osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + duration);
+        }
+        
+        function playCuteClick() { playTone('sine', 600, 1200, 0.1, 0.4); }
+        function playPop() { playTone('sine', 800, 300, 0.1, 0.3); }
+        function playPlink() { playTone('triangle', 1200, null, 0.05, 0.1); }
+        function playErrorBuzz() {
+            if (!audioCtx) return; const osc = audioCtx.createOscillator(), gain = audioCtx.createGain(); osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime); osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.2);
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+            osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+        }
+        function playSparkle() { if (!audioCtx) return; [800, 1000, 1200, 1500].forEach((freq, i) => { setTimeout(() => playTone('sine', freq, null, 0.2, 0.1), i * 50); }); }
+        function playSuccessChime() { if (!audioCtx) return; [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => { setTimeout(() => playTone('triangle', freq, null, 0.4, 0.2), i * 80); }); }
+        function speakAlhamdulillah() { if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance("Alhamdulillah"); utterance.lang = 'ms-MY'; utterance.rate = 1.0; utterance.pitch = 1.1; window.speechSynthesis.speak(utterance); } }
+        function speakArabic(text) { if ('speechSynthesis' in window) { window.speechSynthesis.cancel(); const utterance = new SpeechSynthesisUtterance(text); utterance.lang = 'ar-SA'; utterance.rate = 0.8; utterance.pitch = 1.0; window.speechSynthesis.speak(utterance); } }
+
+        function startBGM() {
+            if (!audioCtx || isBgmPlaying) return; isBgmPlaying = true;
+            const melody = [261.63, 277.18, 329.63, 349.23, 392.00, 415.30, 466.16, 523.25];
+            const delayNode = audioCtx.createDelay(); delayNode.delayTime.value = 0.6; 
+            const feedbackGain = audioCtx.createGain(); feedbackGain.gain.value = 0.35; delayNode.connect(feedbackGain); feedbackGain.connect(delayNode);
+            const mainGain = audioCtx.createGain(); mainGain.gain.value = 0.4; delayNode.connect(mainGain); mainGain.connect(audioCtx.destination);
+            
+            function playNextNote() {
+                if (!isBgmPlaying) return;
+                const noteIndex = Math.floor(Math.random() * melody.length), freq = melody[noteIndex];
+                const osc = audioCtx.createOscillator(), noteGain = audioCtx.createGain();
+                osc.type = 'sine'; osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                noteGain.gain.setValueAtTime(0, audioCtx.currentTime); noteGain.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 1.0); noteGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 4.0); 
+                osc.connect(noteGain); noteGain.connect(mainGain); noteGain.connect(delayNode); 
+                osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + 4.0);
+                bgmTimeout = setTimeout(playNextNote, 1500 + (Math.random() * 2000));
+            }
+            playNextNote();
+        }
+        function stopBGM() { isBgmPlaying = false; clearTimeout(bgmTimeout); }
+        function showAlhamdulillahPopup(x, y) { const popup = document.createElement('div'); popup.className = 'praise-popup'; popup.innerText = '✨ Tepat! ✨'; popup.style.left = `${x}px`; popup.style.top = `${y}px`; document.body.appendChild(popup); setTimeout(() => popup.remove(), 2000); }
+
+        // Game Flow
+        function startGame(level, isContinuing = false) {
+            currentLevel = level; if (!isContinuing) currentAppRound = getUnlockedRound();
+            unlockAudio(); playSparkle(); stopBGM();
+            timeLimit = level === 'mubtadi' ? 60 : (level === 'mutawassit' ? 45 : 30); timeRemaining = timeLimit; updateTimerDisplay();
+            timerContainer.className = "bg-gradient-to-r from-emerald-500 to-teal-500 text-white px-3 py-2 rounded-xl font-bold text-xl sm:text-2xl flex items-center gap-2 shadow-md border-2 border-white";
+            roundDisplay.innerText = `Tahap ${currentAppRound} / ${MAX_ROUNDS}`; roundDisplay.classList.remove('hidden'); document.getElementById('btnBackToMenuFromGame').classList.remove('hidden');
+            overlay.classList.add('hidden'); document.getElementById('menuBabies').classList.add('hidden'); resetModals();
+            
+            let displayLevel = level.charAt(0).toUpperCase() + level.slice(1);
+            if (selectedGameMode === 'carikata') { 
+                gameHeaderTitle.innerText = "Cari Kata"; gameHeaderSubtitle.innerText = `Tahap: ${displayLevel}`; 
+                game1Container.classList.remove('hidden'); game1Container.classList.add('flex'); 
+                game2Container.classList.add('hidden'); game3Container.classList.add('hidden'); initCariKata(level); 
+            } else if (selectedGameMode === 'ujimata') { 
+                gameHeaderTitle.innerText = "Uji Mata Iqra'"; gameHeaderSubtitle.innerText = `Tahap: ${displayLevel}`; 
+                game2Container.classList.remove('hidden'); game2Container.classList.add('flex'); 
+                game1Container.classList.add('hidden'); game3Container.classList.add('hidden'); initUjiMata(level); 
+            } else if (selectedGameMode === 'tajwid') { 
+                gameHeaderTitle.innerText = "Kuiz Tajwid"; gameHeaderSubtitle.innerText = `Tahap: ${displayLevel}`; 
+                game3Container.classList.remove('hidden'); game3Container.classList.add('flex'); 
+                game1Container.classList.add('hidden'); game2Container.classList.add('hidden'); initTajwid(level); 
+            }
+            startBGM(); startTimer();
+        }
+        
+        function startTimer() {
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeRemaining--; updateTimerDisplay();
+                if (timeRemaining === 10) { timerContainer.classList.remove('from-emerald-500', 'to-teal-500'); timerContainer.classList.add('from-red-500', 'to-red-600', 'animate-pulse'); }
+                if (timeRemaining <= 0) handleGameOver(false);
+            }, 1000);
+        }
+        
+        function updateTimerDisplay() { 
+            const m = Math.floor(Math.max(0, timeRemaining) / 60).toString().padStart(2, '0'), s = (Math.max(0, timeRemaining) % 60).toString().padStart(2, '0'); 
+            timerDisplay.innerText = `${m}:${s}`; 
+        }
+
+        function handleGameOver(isWin) {
+            clearInterval(timerInterval); stopBGM(); const timeTaken = timeLimit - timeRemaining, mTitle = document.getElementById('modalTitle'), mDesc = document.getElementById('modalDesc'); let grade = "", gradeDesc = "", starsEarned = 0;
+            
+            if (isWin) { 
+                const ratio = timeRemaining / timeLimit; 
+                if (ratio >= 0.7) { grade = "مُمْتَاز"; gradeDesc = "Mumtaz (Cemerlang)"; starsEarned = 3; } 
+                else if (ratio >= 0.4) { grade = "جَيِّد جِدًّا"; gradeDesc = "Jayyid Jiddan (Sangat Baik)"; starsEarned = 2; } 
+                else if (ratio >= 0.15) { grade = "جَيِّد"; gradeDesc = "Jayyid (Baik)"; starsEarned = 1; } 
+                else { grade = "مَقْبُول"; gradeDesc = "Maqbul (Lulus)"; starsEarned = 1; } 
+                unlockNextRound(); 
+            } else { 
+                grade = "رَاسِب"; gradeDesc = "Rasib (Cuba Lagi)"; starsEarned = 0; 
+            }
+            
+            if (isWin) {
+                overlay.classList.remove('hidden'); resetModals(); document.getElementById('menuBabies').classList.add('hidden'); 
+                document.getElementById('stepEndGame').classList.remove('hidden'); document.getElementById('stepEndGame').classList.add('flex', 'animate-bounceIn'); 
+                document.getElementById('winBabies').classList.remove('hidden');
+                
+                if (currentAppRound < MAX_ROUNDS) { btnNextRound.classList.remove('hidden'); btnNextRound.innerText = `Tahap ${currentAppRound + 1} Seterusnya ⏩`; } 
+                else { btnNextRound.classList.add('hidden'); }
+                
+                mTitle.innerText = grade; mTitle.className = "text-4xl sm:text-5xl font-arabic font-black mb-1 text-emerald-500 drop-shadow-sm relative z-10 shrink-0"; 
+                mDesc.innerHTML = `<span class="font-bold text-emerald-700 block text-lg">${gradeDesc}</span><span class="font-bold text-amber-600 mt-1 block text-sm">Tahap ${currentAppRound} Selesai • Masa: ${timeTaken}s</span>`;
+                
+                animateStars(starsEarned); setTimeout(() => playSuccessChime(), 300); setTimeout(() => speakAlhamdulillah(), 1200); 
+                saveScoreToFirebase(playerName, selectedGameMode, currentLevel, timeTaken, starsEarned);
+            } else {
+                if (selectedGameMode === 'carikata') revealMissedWords();
+                setTimeout(() => {
+                    overlay.classList.remove('hidden'); resetModals(); document.getElementById('menuBabies').classList.add('hidden'); 
+                    document.getElementById('stepEndGame').classList.remove('hidden'); document.getElementById('stepEndGame').classList.add('flex', 'animate-bounceIn'); 
+                    document.getElementById('winBabies').classList.add('hidden'); btnNextRound.classList.add('hidden');
+                    
+                    mTitle.innerText = grade; mTitle.className = "text-4xl sm:text-5xl font-arabic font-black mb-2 text-red-500 drop-shadow-sm relative z-10 shrink-0"; 
+                    mDesc.innerHTML = `<span class="font-bold text-red-700 block text-lg">${gradeDesc}</span><span class="font-bold text-gray-500 mt-1 block text-sm">Masa dah habis. Mari cuba lagi Tahap ${currentAppRound}!</span>`;
+                }, selectedGameMode === 'carikata' ? 3000 : 500); 
+            }
+        }
+        
+        function animateStars(starsEarned) { 
+            const sCont = document.getElementById('starsContainer'); sCont.classList.remove('hidden'); sCont.innerHTML = ''; 
+            for(let i = 0; i < 3; i++) { 
+                const star = document.createElement('div'); star.className = 'star-icon mx-1'; 
+                star.innerHTML = i < starsEarned ? '⭐' : '<span class="text-gray-300">★</span>'; 
+                sCont.appendChild(star); 
+                setTimeout(() => { star.classList.add('animate-pop'); if (i < starsEarned) playPop(); }, 400 + (i * 300)); 
+            } 
+        }
+
+        // Module 1: Cari Kata
+        let ck_gridSize = 10, ck_themeWords = [], ck_allowedDirs = [], ck_grid = [], ck_foundWords = [], ck_wordPaths = {}, ck_isDragging = false, ck_startCell = null, ck_currentPath = [];
+        
+        function initCariKata(level) {
+            if (level === 'mubtadi') { ck_gridSize = 8; ck_allowedDirs = [{x: 1, y: 0}, {x: 0, y: 1}]; } 
+            else if (level === 'mutawassit') { ck_gridSize = 10; ck_allowedDirs = [{x: 1, y: 0}, {x: 0, y: 1}, {x: 1, y: 1}]; } 
+            else { ck_gridSize = 11; ck_allowedDirs = [ {x: 1, y: 0}, {x: 0, y: 1}, {x: 1, y: 1}, {x: 1, y: -1}, {x: -1, y: 0}, {x: 0, y: -1} ]; }
+            
+            ck_themeWords = [...CARI_KATA_POOL].sort(() => 0.5 - Math.random()).slice(0, 5); ck_foundWords = []; ck_wordPaths = {};
+            gridEl.style.gridTemplateColumns = `repeat(${ck_gridSize}, minmax(0, 1fr))`; gridEl.style.gridTemplateRows = `repeat(${ck_gridSize}, minmax(0, 1fr))`;
+            ck_grid = Array(ck_gridSize).fill(null).map(() => Array(ck_gridSize).fill(''));
+            
+            ck_themeWords.forEach(word => {
+                let placed = false;
+                while (!placed) {
+                    const dir = ck_allowedDirs[Math.floor(Math.random() * ck_allowedDirs.length)], startX = Math.floor(Math.random() * ck_gridSize), startY = Math.floor(Math.random() * ck_gridSize);
+                    let canPlace = true, cx = startX, cy = startY;
+                    for (let i = 0; i < word.length; i++) { if (cx < 0 || cx >= ck_gridSize || cy < 0 || cy >= ck_gridSize || (ck_grid[cy][cx] !== '' && ck_grid[cy][cx] !== word[i])) { canPlace = false; break; } cx += dir.x; cy += dir.y; }
+                    if (canPlace) { cx = startX; cy = startY; ck_wordPaths[word] = []; for (let i = 0; i < word.length; i++) { ck_grid[cy][cx] = word[i]; ck_wordPaths[word].push({x: cx, y: cy}); cx += dir.x; cy += dir.y; } placed = true; }
+                }
+            });
+            
+            const alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"; gridEl.innerHTML = '';
+            for (let y = 0; y < ck_gridSize; y++) { 
+                for (let x = 0; x < ck_gridSize; x++) { 
+                    if (ck_grid[y][x] === '') ck_grid[y][x] = alpha[Math.floor(Math.random() * alpha.length)]; 
+                    const cell = document.createElement('div'); cell.className = 'cell'; cell.innerText = ck_grid[y][x]; 
+                    cell.dataset.x = x; cell.dataset.y = y; cell.id = `cell-${x}-${y}`; gridEl.appendChild(cell); 
+                } 
+            }
+            
+            wordListEl.innerHTML = ''; 
+            ck_themeWords.forEach(word => { 
+                const el = document.createElement('div'); el.className = 'word-item bg-white text-emerald-800 px-2 py-1 sm:px-3 rounded-lg text-xs font-bold shadow-sm border border-emerald-100'; 
+                el.id = `word-${word}`; el.innerText = word; wordListEl.appendChild(el); 
+            });
+        }
+        
+        function getCellFromEvent(e) { let cx = e.touches ? e.touches[0].clientX : e.clientX, cy = e.touches ? e.touches[0].clientY : e.clientY; const el = document.elementFromPoint(cx, cy); return (el && el.classList.contains('cell')) ? { x: parseInt(el.dataset.x), y: parseInt(el.dataset.y), el: el } : null; }
+        
+        function handleStart(e) { if(selectedGameMode !== 'carikata') return; const cell = getCellFromEvent(e); if (!cell) return; ck_isDragging = true; ck_startCell = cell; ck_currentPath = [cell]; document.querySelectorAll('.cell.highlighted').forEach(el => el.classList.remove('highlighted')); cell.el.classList.add('highlighted'); playPlink(); }
+        
+        function handleMove(e) {
+            if (!ck_isDragging || !ck_startCell || selectedGameMode !== 'carikata') return; if(e.cancelable) e.preventDefault(); const cell = getCellFromEvent(e);
+            if (!cell || (ck_currentPath.length > 0 && ck_currentPath[ck_currentPath.length-1].x === cell.x && ck_currentPath[ck_currentPath.length-1].y === cell.y)) return;
+            const dx = cell.x - ck_startCell.x, dy = cell.y - ck_startCell.y;
+            if (dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy)) {
+                const steps = Math.max(Math.abs(dx), Math.abs(dy)), stepX = dx === 0 ? 0 : dx / Math.abs(dx), stepY = dy === 0 ? 0 : dy / Math.abs(dy);
+                document.querySelectorAll('.cell.highlighted').forEach(el => el.classList.remove('highlighted')); ck_currentPath = [];
+                for (let i = 0; i <= steps; i++) { const el = document.getElementById(`cell-${ck_startCell.x + (stepX * i)}-${ck_startCell.y + (stepY * i)}`); if (el) { el.classList.add('highlighted'); ck_currentPath.push({x: ck_startCell.x + (stepX * i), y: ck_startCell.y + (stepY * i), el: el}); if (i === steps) playPlink(); } }
+            }
+        }
+        
+        function handleEnd() {
+            if (!ck_isDragging || selectedGameMode !== 'carikata') return; ck_isDragging = false;
+            if (ck_currentPath.length > 1) {
+                const word = ck_currentPath.map(c => ck_grid[c.y][c.x]).join(''), revWord = word.split('').reverse().join('');
+                let match = (ck_themeWords.includes(word) && !ck_foundWords.includes(word)) ? word : ((ck_themeWords.includes(revWord) && !ck_foundWords.includes(revWord)) ? revWord : null);
+                if (match) {
+                    ck_foundWords.push(match); ck_currentPath.forEach(c => { c.el.classList.remove('highlighted'); c.el.classList.add('found'); }); 
+                    document.getElementById(`word-${match}`).classList.add('found'); playSuccessChime(); speakAlhamdulillah();
+                    const rect = ck_currentPath[Math.floor(ck_currentPath.length / 2)].el.getBoundingClientRect(); showAlhamdulillahPopup(rect.left + (rect.width/2), rect.top);
+                    if (ck_foundWords.length === ck_themeWords.length) setTimeout(() => handleGameOver(true), 1500);
+                } else document.querySelectorAll('.cell.highlighted').forEach(el => el.classList.remove('highlighted'));
+            } else document.querySelectorAll('.cell.highlighted').forEach(el => el.classList.remove('highlighted'));
+            ck_startCell = null; ck_currentPath = [];
+        }
+        
+        gridEl.addEventListener('mousedown', handleStart); document.addEventListener('mousemove', handleMove, {passive: false}); document.addEventListener('mouseup', handleEnd);
+        gridEl.addEventListener('touchstart', handleStart, {passive: false}); document.addEventListener('touchmove', handleMove, {passive: false}); document.addEventListener('touchend', handleEnd);
+        
+        function revealMissedWords() { ck_themeWords.forEach(word => { if (!ck_foundWords.includes(word)) { document.getElementById(`word-${word}`)?.classList.add('missed'); ck_wordPaths[word]?.forEach(pos => { const c = document.getElementById(`cell-${pos.x}-${pos.y}`); if (c && !c.classList.contains('found')) c.classList.add('missed-glow'); }); } }); }
+
+        // Module 2: Uji Mata Iqra'
+        let um_roundsCompleted = 0, um_currentTarget = "", um_usedTargets = [];
+        
+        function initUjiMata(level) { um_roundsCompleted = 0; um_usedTargets = []; um_updateProgressUI(); um_nextRound(); }
+        
+        function um_nextRound() {
+            if (um_roundsCompleted >= 5) { handleGameOver(true); return; }
+            let target = ""; while (true) { target = QURAN_WORDS_POOL[Math.floor(Math.random() * QURAN_WORDS_POOL.length)]; if (!um_usedTargets.includes(target)) { um_usedTargets.push(target); break; } }
+            um_currentTarget = target; targetQuranWordEl.innerText = target;
+            
+            let distractors = []; while(distractors.length < 5) { let dist = QURAN_WORDS_POOL[Math.floor(Math.random() * QURAN_WORDS_POOL.length)]; if (dist !== target && !distractors.includes(dist)) distractors.push(dist); }
+            let options = [target, ...distractors].sort(() => 0.5 - Math.random());
+            quranOptionsGridEl.innerHTML = '';
+            
+            options.forEach(opt => {
+                const btn = document.createElement('button'); btn.className = "quran-btn py-2 px-1 rounded-xl text-3xl sm:text-4xl font-arabic font-bold border-2 border-emerald-100 flex items-center justify-center min-h-[65px] leading-loose"; btn.innerText = opt;
+                btn.addEventListener('click', () => {
+                    if (btn.classList.contains('correct') || btn.classList.contains('wrong')) return; quranOptionsGridEl.querySelectorAll('button').forEach(b => b.style.pointerEvents = 'none');
+                    if (opt === um_currentTarget) {
+                        btn.classList.add('correct'); playSuccessChime(); speakArabic(um_currentTarget); 
+                        const rect = btn.getBoundingClientRect(); showAlhamdulillahPopup(rect.left + (rect.width/2), rect.top - 20); 
+                        document.getElementById(`prog-${um_roundsCompleted}`).classList.replace('text-gray-300', 'text-amber-500'); um_roundsCompleted++; setTimeout(() => um_nextRound(), 1200);
+                    } else { btn.classList.add('wrong'); playErrorBuzz(); timeRemaining = Math.max(0, timeRemaining - 2); updateTimerDisplay(); setTimeout(() => { btn.classList.remove('wrong'); quranOptionsGridEl.querySelectorAll('button').forEach(b => b.style.pointerEvents = 'auto'); }, 500); }
+                }); quranOptionsGridEl.appendChild(btn);
+            });
+        }
+        function um_updateProgressUI() { for(let i=0; i<5; i++){ const star = document.getElementById(`prog-${i}`); if (i < um_roundsCompleted) star.classList.replace('text-gray-300', 'text-amber-500'); else star.classList.replace('text-amber-500', 'text-gray-300'); } }
+
+        // Module 3: Kuiz Tajwid
+        let t_roundsCompleted = 0, t_currentQuestion = null, t_usedQuestions = [];
+        
+        function initTajwid(level) { t_roundsCompleted = 0; t_usedQuestions = []; t_updateProgressUI(); t_nextRound(); }
+        
+        function t_nextRound() {
+            if (t_roundsCompleted >= 5) { handleGameOver(true); return; } const pool = TAJWID_QUESTIONS[currentLevel]; let qIndex;
+            do { qIndex = Math.floor(Math.random() * pool.length); } while (t_usedQuestions.includes(qIndex) && t_usedQuestions.length < pool.length);
+            t_usedQuestions.push(qIndex); t_currentQuestion = pool[qIndex];
+            
+            tajwidTargetWordEl.innerHTML = `${t_currentQuestion.pre}<span class="tajwid-highlight">${t_currentQuestion.hi}</span>${t_currentQuestion.post}`;
+            let options = [t_currentQuestion.ans, ...t_currentQuestion.distractors].sort(() => 0.5 - Math.random());
+            tajwidOptionsGridEl.innerHTML = '';
+            
+            options.forEach(opt => {
+                const btn = document.createElement('button'); btn.className = "quran-btn py-3 px-4 rounded-xl text-lg sm:text-xl font-bold border-2 border-emerald-100 flex items-center justify-center min-h-[60px]"; btn.innerText = opt;
+                btn.addEventListener('click', () => {
+                    if (btn.classList.contains('correct') || btn.classList.contains('wrong')) return; tajwidOptionsGridEl.querySelectorAll('button').forEach(b => b.style.pointerEvents = 'none');
+                    if (opt === t_currentQuestion.ans) {
+                        btn.classList.add('correct'); playSuccessChime(); speakAlhamdulillah(); 
+                        const rect = btn.getBoundingClientRect(); showAlhamdulillahPopup(rect.left + (rect.width/2), rect.top - 20); 
+                        document.getElementById(`tprog-${t_roundsCompleted}`).classList.replace('text-gray-300', 'text-amber-500'); t_roundsCompleted++; setTimeout(() => t_nextRound(), 1200);
+                    } else {
+                        btn.classList.add('wrong'); playErrorBuzz(); timeRemaining = Math.max(0, timeRemaining - 3); updateTimerDisplay();
+                        tajwidOptionsGridEl.querySelectorAll('button').forEach(b => { if (b.innerText === t_currentQuestion.ans) { b.classList.add('bg-amber-300', 'border-amber-500'); setTimeout(() => b.classList.remove('bg-amber-300', 'border-amber-500'), 800); } });
+                        setTimeout(() => { btn.classList.remove('wrong'); tajwidOptionsGridEl.querySelectorAll('button').forEach(b => b.style.pointerEvents = 'auto'); }, 800);
+                    }
+                }); tajwidOptionsGridEl.appendChild(btn);
+            });
+        }
+        function t_updateProgressUI() { for(let i=0; i<5; i++){ const star = document.getElementById(`tprog-${i}`); if (i < t_roundsCompleted) star.classList.replace('text-gray-300', 'text-amber-500'); else star.classList.replace('text-amber-500', 'text-gray-300'); } }
+
+        // Leaderboard & Database Logic
+        async function saveScoreToFirebase(name, gameType, level, timeTaken, stars) {
+            if (!currentUser || !db) return;
+            try { const lbRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard'); await addDoc(lbRef, { name, gameType, level, timeTaken, stars, timestamp: new Date().toISOString() }); } catch (err) { console.error("Offline Mode"); }
+        }
+        
+        async function fetchLeaderboard(gType) {
+            if (!currentUser || !db) { leaderboardList.innerHTML = '<div class="text-center text-gray-500 my-4 text-sm font-bold">Gagal menyambung ke pelayan rekod (Mod Luar Talian).</div>'; return; }
+            leaderboardList.innerHTML = '<div class="text-center text-emerald-600 font-bold my-8">Memuatkan data...</div>';
+            try {
+                const lbRef = collection(db, 'artifacts', appId, 'public', 'data', 'leaderboard'), snapshot = await getDocs(lbRef); let records = [];
+                snapshot.forEach(doc => { if (doc.data().gameType === gType) records.push({ id: doc.id, ...doc.data() }); });
+                records.sort((a, b) => ((b.stars || 0) - (a.stars || 0)) || ((a.timeTaken || 999) - (b.timeTaken || 999))); const topRecs = records.slice(0, 15);
+                if (topRecs.length === 0) { leaderboardList.innerHTML = '<div class="text-center text-gray-500 my-4 text-sm font-bold">Belum ada rekod. Jadi yang pertama!</div>'; return; }
+                
+                leaderboardList.innerHTML = '';
+                topRecs.forEach((rec, idx) => {
+                    const row = document.createElement('div'); row.className = `flex justify-between items-center p-2 rounded-xl border ${idx===0?'bg-amber-100 border-amber-300':idx===1?'bg-gray-100 border-gray-300':idx===2?'bg-orange-50 border-orange-200':'bg-white border-gray-100'}`;
+                    const medal = idx===0?'🥇':idx===1?'🥈':idx===2?'🥉':`${idx+1}.`, starStr = '⭐'.repeat(rec.stars || 0) + '☆'.repeat(3 - (rec.stars || 0));
+                    row.innerHTML = `<div class="flex items-center gap-2"><span class="font-bold text-lg w-6 text-center">${medal}</span><div class="flex flex-col"><span class="font-bold text-gray-700 text-sm truncate max-w-[120px]">${rec.name}</span><span class="text-[10px] text-amber-500 tracking-widest">${starStr} <span class="text-gray-400">(${rec.level})</span></span></div></div><div class="font-bold text-emerald-600 text-sm text-right">${rec.timeTaken}s</div>`;
+                    leaderboardList.appendChild(row);
+                });
+            } catch (err) { leaderboardList.innerHTML = '<div class="text-center text-red-500 my-4 text-sm font-bold">Mod Offline diaktifkan. Data luaran tak ditemui.</div>'; }
+        }
+        
+        function switchLbTab(tab) {
+            currentLeaderboardTab = tab; [tabCariKata, tabUjiMata, tabTajwid].forEach(t => t.classList.replace('bg-teal-500', 'bg-gray-200')); [tabCariKata, tabUjiMata, tabTajwid].forEach(t => t.classList.replace('text-white', 'text-gray-600'));
+            const activeTab = tab === 'carikata' ? tabCariKata : (tab === 'ujimata' ? tabUjiMata : tabTajwid); activeTab.classList.replace('bg-gray-200', 'bg-teal-500'); activeTab.classList.replace('text-gray-600', 'text-white'); fetchLeaderboard(tab);
+        }
+        
+        tabCariKata.addEventListener('click', () => { playPop(); switchLbTab('carikata'); }); tabUjiMata.addEventListener('click', () => { playPop(); switchLbTab('ujimata'); }); tabTajwid.addEventListener('click', () => { playPop(); switchLbTab('tajwid'); });
+        showLeaderboardBtns.forEach(btn => { btn.addEventListener('click', () => { playPop(); leaderboardOverlay.classList.remove('hidden'); switchLbTab(selectedGameMode || 'carikata'); }); });
+        closeLeaderboardBtn.addEventListener('click', () => { playPop(); leaderboardOverlay.classList.add('hidden'); });
+    </script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+const CACHE_NAME = 'minda-islamik-v3';
+
+// Masukkan semua pautan luar (CDN & Fonts) ke dalam senarai muat turun offline
+const urlsToCache = [
+  './index.html',
+  './manifest.json',
+  './178441.png',
+  'https://cdn.tailwindcss.com',
+  'https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Fredoka:wght@400;500;600;700&display=swap'
+];
+
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => {
+        console.log('Menyimpan fail ke dalam memori offline...');
+        return cache.addAll(urlsToCache);
+      })
+  );
+});
+
+self.addEventListener('fetch', event => {
+  event.respondWith(
+    caches.match(event.request)
+      .then(response => {
+        // Pulangkan dari cache jika ada (offline), jika tiada ambil dari internet
+        return response || fetch(event.request).then(fetchResponse => {
+            // Simpan pautan luar yang baru ditemui ke dalam cache secara automatik
+            return caches.open(CACHE_NAME).then(cache => {
+                // Jangan simpan data dari extension Chrome/Firebase ke dalam cache
+                if (!event.request.url.includes('firestore') && !event.request.url.includes('chrome-extension')) {
+                    cache.put(event.request, fetchResponse.clone());
+                }
+                return fetchResponse;
+            });
+        });
+      }).catch(() => {
+          console.log('Tiada internet dan fail tidak dijumpai dalam cache.');
+      })
+  );
+});
+
+// Padam cache versi lama supaya telefon sentiasa guna versi terkini
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => {
+          if (cacheName !== CACHE_NAME) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+});
